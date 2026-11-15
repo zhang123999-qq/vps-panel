@@ -1,4 +1,4 @@
-# 运维手册（v0.5.0-m4）
+# 运维手册（v1.1.1）
 
 > 术语约定：**cocks = SOCKS5**（口语/输入错误），本文与界面统一写 SOCKS5。
 
@@ -228,3 +228,51 @@ $ gunzip -f -c /tmp/xray_upload.gz > /tmp/xray_upload && chmod 0755 /tmp/xray_up
 | `Exec format error` | 内核架构与目标机不符或文件损坏（Exec format error） |
 | `sudo: a terminal is required` | 缺少 sudo 免密（sudo 要求输入密码或终端） |
 | `Text file busy` | 内核文件正被占用，请先停止该节点服务 |
+
+---
+
+## 11. 本地效能功能（复制链接 / 面板测速 / 清理残余）
+
+### 11.1 复制节点链接
+
+节点卡片 →「复制链接」→ 粘贴到 v2rayN / sing-box 客户端即可导入。
+
+- VMess / VLESS / SS / SOCKS5 / HTTP：标准 URI；
+- Trojan / Hysteria2：密码经 `url.User` 百分号编码（空格 → `%20`，不是 `+`）；
+- WireGuard：没有标准 URI，该位置给出**客户端 INI**，整段复制导入官方客户端即可。
+
+### 11.2 面板测速（真实出口 IP + 延迟）
+
+节点卡片 →「面板测试」，1–10 秒返回 `面板测试通过：312 ms　出口 IP x.x.x.x`。
+
+实现要点：
+
+- 面板在 Windows，内嵌二进制是 linux/amd64，**本地拉不起客户端**；因此临时客户端进程跑在**目标 VPS** 上；
+- 自动挑选远端空闲端口（20000+节点ID 起递增探测）；
+- SOCKS5 / HTTP 节点走 `curl` 直连分支，不起进程；其余协议临时拉起 xray / sing-box 客户端；
+- 凭据写进 `/tmp/vp-curl-<id>.conf`（0600）用 `curl -K` 引用，**不出现在命令行**（`ps` 看不到密码）；
+- 同一节点同一时刻只允许一次测试，重复点击返回 409「该节点正在测试中」；
+- 结束按 PID 精确 `kill`，并删除 `/tmp/vp-test-*` 与 `/tmp/vp-curl-*`（已验证 0 残留）。
+
+### 11.3 清理残余
+
+服务器行 →「清理残余」→ 二次确认。
+
+清理范围（只碰本面板命名空间，不动 sshd/nginx 等）：
+
+```
+systemctl disable --now vpspanel-xray-<port>.service      （仅白名单单元名）
+systemctl disable --now vpspanel-singbox-<port>.service
+rm /etc/systemd/system/vpspanel-*.service
+pkill -f "[x]ray -config /usr/local/etc/xray/config-"      （systemd 失效时的兜底）
+pkill -f "[s]ing-box run -c /usr/local/etc/sing-box/config-"
+rm /usr/local/etc/xray/config-*.json{,.bak.*,.new.json}
+rm /usr/local/etc/sing-box/config-*.json{,.bak.*}
+wg-quick down wgvp<port> + rm /etc/wireguard/wgvp<port>.conf
+rm /tmp/vp-test-* /tmp/vp-curl-*
+删除面板侧该服务器的节点记录
+```
+
+- **幂等**：重复点击不报错（无单元/无配置时输出「剩余 0 个」）；
+- **不回收防火墙规则**：`ufw`/`firewalld` 里已放行的端口需手动 `ufw delete allow <port>` 或 `firewall-cmd --remove-port`；
+- 非 root 用户需要免密 sudo（见 §10）。

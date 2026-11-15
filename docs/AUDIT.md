@@ -1,8 +1,8 @@
-# VpsPanel 审计与测试报告（v1.0.2）
+# VpsPanel 审计与测试报告（v1.1.1）
 
 > 审计对象：Go + 内嵌前端 + SQLite，单 exe 本地工具
 > 审计方式：静态审查 + 单元测试 + 集成测试（真实 sshd / 真实部署）+ 浏览器实测
-> 结论：**P0×4、P1×17、P2×8 全部处理**；测试 **38 项**（单测 36 / 集成 5 / 启动 2 / E2E 12）+ `-race` 竞态检测
+> 结论：**P0×4、P1×18、P2×8 全部处理**；测试 **68 项**（单测 52 / 集成 4 / 启动 1 / E2E 12）+ `-race` 竞态检测
 
 ---
 
@@ -95,7 +95,7 @@
 | P1-12 | 端口归属仅识别 xray，Hysteria2 无法重部署 | `provision` | ✅ 已修（双内核命名） |
 
 
-### 2.5 后续轮次补充发现（v0.9.0 → v1.0.1）
+### 2.5 后续轮次补充发现（v0.9.0 → v1.1.1）
 
 | 编号 | 级别 | 问题 | 位置 | 状态 |
 |---|---|---|---|---|
@@ -112,6 +112,7 @@
 | A-11 | P2 | e2e 脚本 DELETE 未带头且未校验响应（假阳性 ✓） | `scripts/e2e.sh` | ✅ 带头 + 校验 `"ok":true` + 新增「预清理」步骤 |
 | A-12 | P2 | 安全扫描脚本把测试用例里的字符串误报为危险命令 | `scripts/ci.sh`、`selfcheck.sh` | ✅ 跳过 `_test.go` |
 | A-13 | **P1** | **1B 内核推送后的重启只覆盖 xray**：`RestartAll` 只列 `vpspanel-xray-*.service` / 只遍历 xray 配置目录 → Hysteria2（sing-box）节点仍在跑旧内核 | `kernel/manager.go` | ✅ 两套内核都重启（systemd 用 `vpspanel-*.service` + 单元名白名单；nohup 分支分别遍历 xray/sing-box 配置目录） |
+| A-14 | **P1** | 部署失败只报「安装失败，已回滚到原版本」：`backupAndInstall` 返回 bool 丢弃 stderr、自检用 stdout-only 致 `Exec format error` 不可见、直写 `/usr/local/bin` 对非 root 必失败 | `kernel/manager.go`、`provision/provision.go` | ✅ 新增 `sshx/privilege.go`（DetectPrivilege / Wrap(sudo -n) / Check / Classify），内核安装改为 `installKernel` 六步并回显每步 stdout+stderr，回滚打印「正在执行回滚…」「旧内核已恢复」 |
 
 ### P2（代码质量）
 

@@ -1,4 +1,4 @@
-# VPS Panel — 多机管理与节点一键部署系统 · 方案 v0.1
+## 10. # VpsPanel 架构说明（对应代码 v1.1.1）
 
 > 状态：方案评审中（未开始编码）
 > 日期：2026-11-15
@@ -13,7 +13,7 @@
 | 巡检 | 每 5 分钟 / 每台，10 台共 10 个轻量 SSH 命令 | 开销可忽略 |
 | 备份 | `data/` 目录整体打包即可（DB + 主密钥 + 日志） | 不需要专业备份方案 |
 | 交付形态 | **绿色单文件 exe，双击即用，零安装零下载** | 前端与内核全部内嵌；保留控制台窗口；数据写 exe 同级 `data/` |
-| 协议范围 | **9 种必做**：VMess / VLESS / Shadowsocks / Trojan / Hysteria2 / WireGuard / MASQUE / SOCKS / HTTP | xray + sing-box 双内核都要内嵌 |
+| 协议范围 | 目标 9 种；**已实现 8 种**（VMess / VLESS / Shadowsocks / Trojan / Hysteria2 / WireGuard / SOCKS / HTTP），MASQUE 待接（界面标 experimental） | xray + sing-box 双内核都已内嵌 |
 | sing-box | 「先不做」指**不做 sing-box 协议族/独立入口**，但 Hysteria2 与 MASQUE 必须借它 | 内核内嵌，界面只暴露协议，不暴露内核 |
 
 **由此简化掉的**：多用户/RBAC、套餐计费、分布式任务队列（Redis）、读写分离。
@@ -53,7 +53,7 @@
 ## 3. 功能清单（按优先级）
 
 ### P0 — MVP（能用）
-- [ ] 登录（单管理员）
+- [x] 登录：**不做**——定位为本地单用户工具，改用「Host / Origin / Content-Type」三重来源校验（`SecurityGuard`）
 - [ ] VPS 列表 / 新增 / 编辑 / 删除
 - [ ] SSH 连通测试 + 采集系统信息（OS、内核、CPU、内存、磁盘、已装节点）
 - [ ] 协议模板管理（VLESS+Reality、Hysteria2 起步）
@@ -64,7 +64,7 @@
 
 ### P1 — 好用
 - [ ] 批量操作（多选 VPS 一起部署/巡检/重启）
-- [ ] 订阅输出：Clash/Mihomo YAML、v2rayN base64、sing-box JSON
+- [x] **不做订阅分发**：仅提供「单节点复制链接」（v2rayN / sing-box 客户端可直接导入）
 - [ ] 流量与在线统计（xray stats API / sing-box Clash API）
 - [ ] 定时巡检 + 掉线告警（Webhook / 邮件）
 - [ ] 到期提醒（VPS 续费日）
@@ -157,7 +157,13 @@
 
 **幂等性**：同一 VPS 重复部署同协议 = 更新配置 + 重启，不会产生重复服务/重复端口。
 
-### 协议 × 内核矩阵（已确认必须支持的 9 种）
+### 协议 × 内核矩阵（目标 9 种，已实现 8 种）
+
+| 8 | SOCKS5 | xray | 不需要 | TCP | ★ | ✅ 已实现 |
+| 9 | HTTP 代理 | xray | 不需要 | TCP | ★ | ✅ 已实现 |
+
+**实现状态**：1–9 中除 **MASQUE（#7）** 外全部可部署；MASQUE 需 sing-box endpoint，
+当前在界面上标为「实验」且不会假报成功。
 
 > 结论：**xray 与 sing-box 两个内核都必须内嵌**。Hysteria2 和 MASQUE 只有 sing-box 支持，无法用 xray 替代。
 > 但界面上不暴露「内核」概念，用户只选协议。
@@ -218,7 +224,7 @@ audit_logs     id, user_id, action, target, payload(json), ip, created_at
 
 | 面 | 措施 |
 |---|---|
-| 面板登录 | argon2id + 登录失败限流 + 可选 TOTP |
+| 面板访问 | 仅监听 `127.0.0.1`；`SecurityGuard` 校验 Host（挡 DNS rebinding）、写请求 Content-Type（挡表单 CSRF）、Origin 同源 |
 | 面板暴露 | **默认只监听 127.0.0.1**，前面挂 Nginx + TLS；或走 Cloudflare Tunnel / WireGuard，不直接开公网 |
 | 远程命令 | 一律**白名单化的固定脚本**，参数做 shell 转义；禁止把用户输入拼进命令行 |
 | 凭证 | AES-GCM 加密 + 主密钥外置 + 日志脱敏（不打印私钥/密码） |
@@ -257,36 +263,49 @@ audit_logs     id, user_id, action, target, payload(json), ip, created_at
 - exe 体积预估 **约 70–80MB**，这是"零依赖"的代价，可接受；
 - 升级 = 用新 exe 覆盖旧 exe，数据在 `data/` 里不受影响。
 
-## 8.1 订阅格式（已确认）
+## 8.1 链接输出（已确认：不做订阅）
 
-只输出两种，不做 Clash YAML：
-- **v2rayN 链接**（`vless://`、`vmess://`、`ss://`、`trojan://`、`hysteria2://`、`wg://`、`socks://`、`http://` 分享链接）
-- **sing-box JSON**（完整 `outbounds` 配置，可直接导入客户端）
+定位为本地自用工具，**不生成订阅、不做分发**。节点详情页提供「复制链接」，输出标准 URI：
 
----
+| 协议 | 形式 |
+|---|---|
+| VMess | `vmess://base64(JSON)` |
+| VLESS | `vless://uuid@host:port?security=reality&pbk=…&sid=…` |
+| Shadowsocks | `ss://base64url(method:password)@host:port` |
+| Trojan | `trojan://password@host:port?security=tls&allowInsecure=1` |
+| Hysteria2 | `hysteria2://password@host:port/?sni=…&insecure=1` |
+| SOCKS5 / HTTP | `socks://` / `http://` + base64url 账号 |
+| WireGuard | 无标准 URI → 直接给**客户端 INI** |
 
-## 9. 里程碑
+密码类字段统一用 `url.User` 编码（空格 → `%20`，避免 `+` 被当成字面加号）。
 
-| 阶段 | 内容 | 预估 |
+## 9.实际进度）
+
+| 阶段 | 内容 | 状态 |
 |---|---|---|
-| **M0** | 方案定稿 + 脚手架（Go 项目结构、Vue 初始化、DB 迁移） | 0.5–1 天 |
-| **M1** | 登录 + VPS CRUD + SSH 测试 + 系统信息采集 + 审计 | 2–3 天 |
-| **M2** | 部署引擎 + VLESS/Reality + Hysteria2 + 实时日志 + 回滚 | 3–5 天 |
-| **M3** | 订阅输出（Clash/v2rayN/sing-box）+ 分享链接 | 1–2 天 |
-| **M4** | 流量采集 + 巡检 + 到期提醒 + 批量操作 | 2–3 天 |
-| **M5** | 多用户 + 2FA + 证书自动化 | 2–3 天 |
+| M0 | 骨架 / DB / 静态托管 / 交叉编译 | ✅ |
+| M1 | VPS CRUD、SSH 探测、凭证加密、审计 | ✅ |
+| M2a | 部署引擎（xray 5 协议）+ 9 步日志 + 回滚 | ✅ |
+| M2b | 内核双层升级（1A 构建期 / 1B 运行时） | ✅ |
+| M2c | 端口默认 443、前置+落地链路、家宽 SOCKS5 | ✅ |
+| M2d | LandingNode 统一抽象 | ✅ |
+| M2e | Trojan（自签 TLS）、Hysteria2（sing-box） | ✅ |
+| M2f | WireGuard（wg-quick） | ✅ |
+| M2g | MASQUE（sing-box endpoint） | ⬜ |
+| M3 | 本地效能：复制链接、面板测速、清理残余 | ✅ |
+| M4 | 数据库迁移机制 / 单实例 / 安全加固 / CI 脚本 | ✅ |
 
----
+## 10. 早期待确认问题的最终答案
 
-## 10. 待确认问题（阻塞开发）
-
-1. **自用还是多人？** 决定 SQLite 还是 PostgreSQL、要不要做权限系统。
-2. **技术栈**：Go + Vue（推荐）／ Python FastAPI + Vue ／ Node + Vue？
-3. **订阅格式**：需要 Clash/Mihomo YAML、v2rayN 链接、sing-box JSON 中的哪些？
-4. **面板放哪**：公网 VPS（需要域名 + TLS）还是内网/本机（走隧道）？
-5. **是否要 UDP 协议**（Hysteria2 / TUIC）？涉及服务商是否限 UDP。
-6. **规模**：大概管多少台 VPS？几台 → SQLite 够；几十台 → 上 Postgres + 连接池调优。
-7. **合规**：只在你自己拥有或有明确授权的 VPS 上操作，并遵守服务商 ToS 与当地法律。
+| 早期问题 | 最终决定 |
+|---|---|
+| 自用还是多人？ | **个人自用**，约 10 台 → SQLite（WAL），单用户，不做权限系统 |
+| 技术栈？ | **Go + 原生 JS 单页**（`go:embed` 内嵌），不引前端框架与 CDN |
+| 订阅格式？ | **不做全局订阅**，只做「单节点复制链接」，v2rayN 可直接导入 |
+| 面板放哪？ | **本机 Windows 绿色单 exe**，仅监听 `127.0.0.1`，双击启动 |
+| 是否要 UDP 协议？ | **要**（Hysteria2 / WireGuard），需注意云厂商限 UDP |
+| 规模？ | 约 10 台，SQLite + WAL + 单实例锁足够 |
+| 合规？ | 仅在自有或明确授权的 VPS 上操作，遵守服务商 ToS 与当地法律 |
 
 ---
 

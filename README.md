@@ -15,7 +15,7 @@
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | M0 | 项目骨架 / DB 迁移 / 静态托管 / 交叉编译 | ✅ |
-| M1 | 登录 + VPS CRUD + SSH 探测 + 凭证加密 + 审计 | ✅（登录待补） |
+| M1 | VPS CRUD + SSH 探测 + 凭证加密（AES-256-GCM）+ 审计日志 | ✅（单用户本地，无登录） |
 | M2a | 部署引擎 + xray 五协议 + 实时日志 + 回滚 | ✅ |
 | M2b | 内核一键更新（xray + sing-box，含备份/校验/回滚） | ✅ |
 | M2c | 自定义端口（默认 443）、前置+落地链路、家宽 SOCKS5 落地 | ✅ |
@@ -107,8 +107,15 @@ Windows `%LOCALAPPDATA%\VpsPanel\` · Linux/macOS `~/.local/share/vpspanel/`
 
 ## 文档
 
-- 架构与方案：[`docs/architecture.md`](docs/architecture.md)
-- 运维手册（新功能 + 回滚）：[`docs/ops.md`](docs/ops.md)
+| 文档 | 内容 |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | 架构、协议矩阵、内核版本策略、落地抽象、里程碑 |
+| [`docs/ops.md`](docs/ops.md) | 运维手册：内核升级、链路、家宽、非 root 部署、本地效能、回滚 |
+| [`docs/AUDIT.md`](docs/AUDIT.md) | 审计与测试报告：P0×4 / P1×18 / P2×8、测试矩阵与证据 |
+| [`CHANGELOG.md`](CHANGELOG.md) | 版本变更记录（v0.1.0 → v1.1.1） |
+| [`LICENSE`](LICENSE) | 开源许可证（MIT） |
+| [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) | 内嵌内核（MPL-2.0 / GPL-3.0）与依赖的许可证义务 |
+| [`dist/使用说明.txt`](dist/使用说明.txt) | 面向使用者的操作说明 |
 
 ## 安全约定
 
@@ -118,6 +125,20 @@ Windows `%LOCALAPPDATA%\VpsPanel\` · Linux/macOS `~/.local/share/vpspanel/`
 - 主机字段做字符白名单校验，远端命令不接受拼接的用户输入；
 - 同一台机器的同一端口部署加互斥锁，避免并发写坏配置；
 - 所有写操作写审计日志。
+
+## 许可证
+
+自有代码以 **MIT** 发布（见 [`LICENSE`](LICENSE)）。
+
+内嵌内核**不在 MIT 范围内**：
+
+| 组件 | 许可证 | 说明 |
+|---|---|---|
+| Xray-core 26.11.9 | **MPL-2.0** | 原样分发二进制，未修改源码 |
+| sing-box 1.14.4 | **GPL-3.0** | 对外分发含 sing-box 的 exe 需遵守 GPLv3（提供源码或书面要约） |
+
+仅自用（自己编译、部署到自己的 VPS）不触发分发义务；对外分发的注意事项与替代方案见
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 
 ## 回滚速查
 
