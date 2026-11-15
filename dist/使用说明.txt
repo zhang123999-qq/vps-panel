@@ -1,0 +1,49 @@
+VpsPanel v0.5.0-m4  测试包
+====================================
+
+【怎么用】
+1. 解压到有写权限的目录，双击 VpsPanel.exe
+2. 命令行窗口会打印「内嵌内核: xray x / sing-box y」，浏览器自动打开
+3. 「+ 添加服务器」→ 填 IP/端口/用户名/密码或私钥（表单里可先「测试连接」）
+4. 点协议卡片 → 勾选服务器 → 端口默认 443 → 开始部署
+
+【本版新增】
+■ 两种「内核更新」严格分开（别混用）
+  1A 内嵌内核升级：维护者用 scripts/update-kernels.sh 在**构建期**升级并重新打 exe
+  1B 远端内核升级：界面「运维工具 → 远端内核升级」，把 exe 内嵌的内核**推送**到 VPS
+     · 显示「内嵌版本 vs 各远端版本」差异表，需更新行自动勾选
+     · 推送前备份旧二进制，版本号不符自动回滚，完成后自动重启节点服务
+     · 运行期**不联网下载**任何内核
+
+■ 落地统一抽象（VPS / 家宽 SOCKS5 同一套流程）
+  · 「落地节点」录入家宽 SOCKS5：地址/端口/用户名/密码/预期出口 IP
+  · 「测试」五段校验：TCP → SOCKS5 握手 → 认证 → CONNECT 转发 → 出口 IP 比对
+  · 通过后直接出现在「前置 + 落地」的落地列表里（与普通 VPS 合并展示）
+  · 建链路统一流程：落地部署 → 前置部署 → 可达性 → 出口 IP 校验 → 失败回滚两端
+
+【术语】
+  「cocks」= SOCKS5（输入笔误），界面与文档统一写 SOCKS5。
+
+【端口】
+  默认 443；1-65535 校验；只把「监听中」算占用；自动放行 ufw/firewalld，
+  云服务商安全组请自行放行。WS+TLS 复用 443 需注意与现有 web 服务冲突。
+
+【回滚】
+  远端内核：cp -f "$(ls -1t /usr/local/bin/xray.bak-* | head -1)" /usr/local/bin/xray
+            systemctl restart 'vpspanel-xray-*.service'
+  内嵌内核：./scripts/update-kernels.sh --rollback all   然后重新 build
+  节点/链路：面板里点该节点的「卸载」（会停服务并删配置）
+
+【日志】
+  data\vpspanel.log                    面板日志
+  /var/log/vpspanel-xray-<端口>.log    无 systemd 时的节点日志
+  journalctl -u vpspanel-xray-<端口>   有 systemd 时
+
+【本版新增：三个收尾能力】
+1) 数据库自动迁移：老库启动时按 PRAGMA user_version 静默升级，绝不丢数据
+2) 节点卡片新增 [复制链接]：一键把该节点 URI 存入剪贴板，直接粘进 v2rayN
+   服务器操作列新增 [清理残余]：停止并删除本面板建的 vpspanel-* 服务、
+   config-*.json、WireGuard 接口，并清理面板侧记录（不动 sshd/nginx 等系统组件）
+3) 节点卡片新增 [面板测试]：在目标机上临时拉起客户端跑一次真实请求，
+   直接显示出口 IP 与延迟（测完自动杀掉临时进程、删除临时文件）
+   注：SOCKS5/HTTP 走直连测试；WireGuard 暂不支持面板内测试

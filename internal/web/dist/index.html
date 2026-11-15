@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VpsPanel</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#151b23; --panel2:#1b2330; --line:#252e3a;
+    --text:#e6edf3; --dim:#8b949e; --accent:#3b82f6; --ok:#3fb950; --bad:#f85149; --warn:#d29922;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:16px 24px;border-bottom:1px solid var(--line);background:var(--panel)}
+  h1{font-size:17px;margin:0;font-weight:600}
+  .ver{color:var(--dim);font-size:12px;border:1px solid var(--line);border-radius:20px;padding:1px 8px}
+  .spacer{flex:1}
+  main{padding:20px 24px;max-width:1240px;margin:0 auto}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
+  .card .k{color:var(--dim);font-size:12px}
+  .card .v{font-size:22px;font-weight:600;margin-top:2px}
+  /* 防御性布局：固定表格布局 + 单元格强制单行省略，长文本绝不撑破表格 */
+  table{width:100%;table-layout:fixed;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* 操作列不能省略、不能被挤压 */
+  td.actions,th.actions{white-space:nowrap;overflow:visible;text-overflow:clip;padding-right:8px}
+  td.actions button{padding:4px 8px;font-size:12px}
+  td.actions button{margin-left:2px}
+  .cell-name b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  th{background:var(--panel2);color:var(--dim);font-weight:500;font-size:12px}
+  tr.srv-row{cursor:pointer}
+  tr.srv-row:hover td{background:#18202b}
+  .mono{font-family:ui-monospace,Consolas,monospace}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--dim);vertical-align:middle}
+  td.cell-status{text-align:center}
+  .dot.online{background:var(--ok)} .dot.offline{background:var(--bad)}
+  button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:6px 12px}
+  button:hover{border-color:#3a4658}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{filter:brightness(1.1)}
+  button.ghost{padding:4px 8px;font-size:12px}
+  button.danger{color:var(--bad);border-color:#43262a}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .mask{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+  .mask.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(620px,100%);max-height:90vh;display:flex;flex-direction:column}
+  .modal h2{font-size:15px;margin:0;padding:15px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  .modal .body{padding:16px 20px;display:grid;gap:12px;overflow:auto}
+  .modal .foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;align-items:center}
+  label{display:block;font-size:12px;color:var(--dim);margin-bottom:5px}
+  input,select,textarea{width:100%;background:#0f1620;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font:inherit}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  .modal .row, .body .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .hint{color:var(--dim);font-size:12px}
+  #toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);display:grid;gap:8px;z-index:90}
+  .t{background:#1f2937;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:9px 14px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.4);max-width:70vw}
+  .t.ok{border-left-color:var(--ok)} .t.bad{border-left-color:var(--bad)}
+  .protos{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:10px}
+  .proto{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;transition:.15s}
+  .proto.click{cursor:pointer}
+  .proto.click:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .proto.off{opacity:.55;cursor:not-allowed}
+  .proto .n{font-weight:600;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+  .proto .m{color:var(--dim);font-size:11px;margin-top:4px}
+  .tag{font-size:10px;padding:1px 6px;border-radius:10px;border:1px solid var(--line);color:var(--dim)}
+  .tag.ready{color:var(--ok);border-color:#1c3a26}
+  .tag.pending{color:var(--warn);border-color:#3d3320}
+  .tag.experimental{color:#a371f7;border-color:#2f2a45}
+  h3{font-size:13px;color:var(--dim);font-weight:500;margin:26px 0 0}
+  .empty{padding:26px;text-align:center;color:var(--dim)}
+  /* 勾选服务器列表 */
+  .pick{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+  .pick label{display:flex;gap:10px;align-items:center;padding:9px 12px;margin:0;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px;color:var(--text)}
+  .pick label:last-child{border-bottom:none}
+  .pick input{width:auto}
+  .pick .st{font-size:11px;color:var(--dim)}
+  /* 日志 */
+  .logs{background:#0a0e14;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap;max-height:240px;overflow:auto}
+  .res{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:grid;gap:8px}
+  .res .h{display:flex;justify-content:space-between;align-items:center;font-size:13px}
+  .link{background:#0f1620;border:1px dashed var(--line);border-radius:6px;padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:11px;word-break:break-all;color:#9ecbff}
+  .nodes{display:grid;gap:10px}
+  .node{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:grid;gap:8px}
+  .node .top{display:flex;gap:10px;align-items:center;font-size:13px}
+  .pills{display:flex;gap:6px;align-items:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>VpsPanel</h1><span class="ver" id="ver">-</span>
+  <span class="spacer"></span>
+  <span class="hint" id="dataDir"></span>
+  <button class="primary" onclick="openForm()">+ 添加服务器</button>
+</header>
+
+<main>
+  <div class="cards">
+    <div class="card"><div class="k">服务器总数</div><div class="v" id="sTotal">0</div></div>
+    <div class="card"><div class="k">在线</div><div class="v" style="color:var(--ok)" id="sOnline">0</div></div>
+    <div class="card"><div class="k">离线 / 未检测</div><div class="v" style="color:var(--bad)" id="sOffline">0</div></div>
+    <div class="card"><div class="k">已部署节点</div><div class="v" id="sNodes">0</div></div>
+  </div>
+
+  <table>
+    <colgroup>
+      <col style="width:13%" /><col style="width:16%" /><col style="width:9%" />
+      <col style="width:7%" /><col style="width:18%" /><col style="width:16%" />
+      <col style="width:21%" />
+    </colgroup>
+    <thead><tr>
+      <th>名称</th><th>地址</th><th>用户</th><th>状态</th><th>系统</th><th>规格</th>
+      <th class="actions">操作</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="empty" class="empty" style="display:none">还没有服务器，点右上角「+ 添加服务器」开始</div>
+
+  <h3>点击协议 → 勾选服务器 → 一键部署（端口默认 443）</h3>
+  <div class="protos" id="protos"></div>
+
+  <h3>运维工具</h3>
+  <div class="protos">
+    <div class="proto click" onclick="openKernel()">
+      <div class="n">远端内核升级<span class="tag ready">1B</span></div>
+      <div class="m">内嵌版本 vs 各远端版本对比 · 推送 · 备份回滚 · 自动重启</div>
+    </div>
+    <div class="proto click" onclick="openChain()">
+      <div class="n">前置 + 落地<span class="tag ready">链路</span></div>
+      <div class="m">落地可选 VPS 或家宽 SOCKS5 · 连通性 + 出口 IP 校验 · 失败回滚</div>
+    </div>
+    <div class="proto click" onclick="openLanding()">
+      <div class="n">落地节点<span class="tag ready">家宽 SOCKS5</span></div>
+      <div class="m">录入/测试家宽节点（cocks 等同 SOCKS5）· 通过后可直接当选落地</div>
+    </div>
+  </div>
+</main>
+
+<!-- 添加/编辑服务器 -->
+<div class="mask" id="mask">
+  <div class="modal">
+    <h2 id="formTitle">添加服务器</h2>
+    <div class="body">
+      <div class="row">
+        <div><label>名称 *</label><input id="f_name" placeholder="如：HK-01" /></div>
+        <div><label>地址 / IP *</label><input id="f_host" placeholder="1.2.3.4 或域名" /></div>
+      </div>
+      <div class="row">
+        <div><label>SSH 端口</label><input id="f_port" value="22" /></div>
+        <div><label>用户名</label><input id="f_user" value="root" /></div>
+      </div>
+      <div>
+        <label>认证方式</label>
+        <select id="f_auth" onchange="toggleAuth()">
+          <option value="password">密码</option>
+          <option value="key">私钥（OpenSSH 格式）</option>
+        </select>
+      </div>
+      <div id="pwdBox"><label>密码</label><input id="f_pwd" type="password" placeholder="编辑时留空表示不修改" autocomplete="new-password" /></div>
+      <div id="keyBox" style="display:none">
+        <label>私钥内容</label>
+        <textarea id="f_key" rows="5" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;编辑时留空表示不修改"></textarea>
+        <div class="hint">私钥会用 AES-256-GCM 加密后存本地数据库，不会上传</div>
+      </div>
+      <div class="row">
+        <div><label>服务商</label><input id="f_provider" placeholder="可选" /></div>
+        <div><label>地区</label><input id="f_region" placeholder="可选" /></div>
+      </div>
+      <div><label>备注</label><input id="f_note" placeholder="可选" /></div>
+    </div>
+    <div class="foot">
+      <span id="probeMsg" class="hint" style="margin-right:auto;max-width:58%"></span>
+      <button id="probeBtn" onclick="probeForm()">测试连接</button>
+      <button onclick="closeForm()">取消</button>
+      <button class="primary" id="saveBtn" onclick="saveServer()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 部署 -->
+<div class="mask" id="depMask">
+  <div class="modal" style="width:min(720px,100%)">
+    <h2 id="depTitle">部署</h2>
+    <div class="body">
+      <div id="depSetup">
+        <label>选择服务器（可多选）</label>
+        <div class="pick" id="depServers"></div>
+        <div class="row" style="margin-top:12px">
+          <div><label>端口</label><input id="d_port" value="443" /></div>
+          <div id="d_netBox"><label>传输方式</label>
+            <select id="d_net"><option value="tcp">TCP + Reality（无需域名）</option><option value="ws">WebSocket（无 TLS）</option></select>
+          </div>
+        </div>
+        <div class="row" id="d_realityBox" style="margin-top:12px">
+          <div><label>Reality 伪装目标 (dest:端口)</label><input id="d_dest" value="www.microsoft.com:443" /></div>
+          <div><label>SNI</label><input id="d_sni" placeholder="留空自动取 dest 的域名" /></div>
+        </div>
+        <div id="d_ssBox" style="margin-top:12px;display:none">
+          <label>Shadowsocks 加密方式</label>
+          <select id="d_method">
+            <option value="aes-256-gcm">aes-256-gcm（兼容性最好）</option>
+            <option value="chacha20-poly1305">chacha20-poly1305</option>
+            <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm（需客户端支持 2022）</option>
+          </select>
+        </div>
+        <div class="hint" id="d_tip" style="margin-top:10px"></div>
+      </div>
+      <div id="depResults" style="display:none;gap:10px"></div>
+    </div>
+    <div class="foot">
+      <span class="hint" id="depMsg" style="margin-right:auto"></span>
+      <button id="depCancel" onclick="closeDeploy()">取消</button>
+      <button class="primary" id="depBtn" onclick="runDeploy()">开始部署</button>
+    </div>
+  </div>
+</div>
+
+<!-- 服务器详情：已部署节点 -->
+<div class="mask" id="detMask">
+  <div class="modal" style="width:min(760px,100%)">
+    <h2><span id="detTitle">服务器</span><span class="spacer"></span></h2>
+    <div class="body">
+      <div class="hint" id="detMeta"></div>
+      <div class="nodes" id="detNodes"></div>
+    </div>
+    <div class="foot">
+      <button onclick="closeDetail()">关闭</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- 远端内核升级（1B） -->
+<div class="mask" id="kerMask">
+  <div class="modal" style="width:min(760px,100%)">
+    <h2>远端内核升级 <span class="tag ready" id="kerBuiltinTag">内嵌 -</span></h2>
+    <div class="body">
+      <div id="kerSetup">
+        <div class="hint" id="kerBuiltin"></div>
+        <div id="kerRows" style="margin-top:10px"></div>
+        <div style="margin-top:12px">
+          <label>更新范围</label>
+          <select id="kerTarget">
+            <option value="all">xray + sing-box</option>
+            <option value="xray">仅 xray</option>
+            <option value="singbox">仅 sing-box</option>
+          </select>
+        </div>
+        <div class="hint" style="margin-top:10px">
+          推送的是 <b>面板内嵌的内核</b>（不联网下载）；更新前自动备份旧二进制，校验失败自动回滚。
+          与「内嵌内核升级（维护者构建期脚本）」不是同一个入口。
+        </div>
+      </div>
+      <div id="kerResults" style="display:none;gap:10px"></div>
+    </div>
+    <div class="foot">
+      <span class="hint" id="kerMsg" style="margin-right:auto"></span>
+      <button onclick="closeKernel()">关闭</button>
+      <button class="primary" id="kerBtn" onclick="runKernel()">更新选中</button>
+    </div>
+  </div>
+</div>
+
+<!-- 落地节点（家宽 SOCKS5） -->
+<div class="mask" id="landMask">
+  <div class="modal" style="width:min(760px,100%)">
+    <h2>落地节点（家宽 SOCKS5）</h2>
+    <div class="body">
+      <div class="row">
+        <div><label>名称</label><input id="l_name" placeholder="如：家里宽带" /></div>
+        <div><label>预期出口 IP（可选）</label><input id="l_expect" placeholder="如 1.2.3.4" /></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div><label>地址</label><input id="l_host" placeholder="1.2.3.4 或域名" /></div>
+        <div><label>端口</label><input id="l_port" value="1080" /></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div><label>用户名（可空）</label><input id="l_user" autocomplete="off" /></div>
+        <div><label>密码（可空）</label><input id="l_pass" type="password" autocomplete="new-password" /></div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px">
+        <button class="primary" onclick="saveLanding()">保存节点</button>
+        <span class="hint" style="align-self:center">保存后点列表中「测试」，通过即可在前置+落地里选为落地</span>
+      </div>
+      <h3 style="margin:18px 0 8px">已录入</h3>
+      <div id="landList" class="nodes"></div>
+    </div>
+    <div class="foot"><span class="hint" id="landMsg" style="margin-right:auto"></span><button onclick="closeLanding()">关闭</button></div>
+  </div>
+</div>
+
+<!-- 前置 + 落地 -->
+<div class="mask" id="chainMask">
+  <div class="modal" style="width:min(760px,100%)">
+    <h2>配置前置 + 落地链路</h2>
+    <div class="body">
+      <div id="chainSetup">
+        <div class="row">
+          <div><label>前置 VPS（对外）</label><select id="c_relay"></select></div>
+          <div><label>前置端口</label><input id="c_rport" value="443" /></div>
+        </div>
+        <div style="margin-top:12px">
+          <label>落地节点（VPS 或家宽 SOCKS5）</label>
+          <select id="c_landing"></select>
+        </div>
+        <div class="row" style="margin-top:12px" id="c_serverOnly">
+          <div><label>落地端口（仅 VPS 落地）</label><input id="c_lport" value="8443" /></div>
+          <div><label>落地协议（仅 VPS 落地）</label>
+            <select id="c_proto">
+              <option value="vless-reality">VLESS + Reality</option>
+              <option value="vmess-ws">VMess + WebSocket</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <div><label>Reality 伪装目标</label><input id="c_dest" value="www.microsoft.com:443" /></div>
+          <div><label>SNI</label><input id="c_sni" placeholder="留空自动取 dest 域名" /></div>
+        </div>
+        <div class="hint" style="margin-top:10px">
+          流程：落地部署 → 前置部署 → 落地可达性 → 出口 IP 校验（与预期不符即回滚）。
+        </div>
+      </div>
+      <div id="chainResults" style="display:none;gap:10px"></div>
+    </div>
+    <div class="foot">
+      <span class="hint" id="chainMsg" style="margin-right:auto"></span>
+      <button onclick="closeChain()">关闭</button>
+      <button class="primary" id="chainBtn" onclick="runChain()">开始部署</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let servers = [], protos = [], editingId = null, depProto = null;
+
+function toast(msg, kind='') {
+  const d = document.createElement('div');
+  d.className = 't ' + kind; d.textContent = msg;
+  $('toast').appendChild(d);
+  setTimeout(() => d.remove(), 4200);
+}
+async function api(path, opt={}) {
+  const r = await fetch('/api' + path, { headers:{'Content-Type':'application/json'}, ...opt });
+  const d = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  return d;
+}
+const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+let nodeCount = 0;
+
+async function load() {
+  try {
+    const h = await api('/health');
+    $('ver').textContent = 'v' + h.version;
+    $('dataDir').textContent = '数据目录：' + h.data;
+  } catch(e) {}
+  try {
+    const d = await api('/servers');
+    servers = (Array.isArray(d.items) ? d.items : []).filter(x => x && typeof x === 'object' && x.id);
+    render();
+    const p = await api('/protocols'); protos = (Array.isArray(p.items) ? p.items : []).filter(x => x && x.key); renderProtos();
+    // 统计节点数
+    let n = 0;
+    for (const s of servers) {
+      try { const r = await api('/servers/' + s.id + '/nodes'); n += (r.items || []).length; } catch(e) {}
+    }
+    nodeCount = n; $('sNodes').textContent = n;
+  } catch(e) { toast(e.message, 'bad'); }
+}
+
+function render() {
+  const on = servers.filter(s => s.status === 'online').length;
+  $('sTotal').textContent = servers.length;
+  $('sOnline').textContent = on;
+  $('sOffline').textContent = servers.length - on;
+  $('empty').style.display = servers.length ? 'none' : 'block';
+
+  $('rows').innerHTML = servers.map(s => {
+    // 字段严格按列对应：名称 / 地址 / 用户 / 状态 / 系统 / 规格 / 操作
+    const one = v => String(v ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const name = one(s.name) || '-';
+    const addr = one(s.host) + (s.port || s.ssh_port ? ':' + (s.port || s.ssh_port) : '');
+    const user = one(s.username || s.ssh_user) || '-';
+    const st = one(s.status) || 'unknown';
+    const cls = st === 'online' ? 'online' : (st === 'offline' ? 'offline' : '');
+    const stLabel = st === 'online' ? '在线' : (st === 'offline' ? '离线' : '未检测');
+    const osName = one(s.os || s.os_info) || '—';
+    const specs = one(s.specs) || '-';
+    return `<tr class="srv-row" onclick="openDetail(${s.id})">
+      <td class="cell-name"><b title="${esc(name)}">${esc(name)}</b>${s.note ? `<div class="hint" title="${esc(one(s.note))}">${esc(one(s.note))}</div>` : ''}</td>
+      <td class="mono" title="${esc(addr)}">${esc(addr)}</td>
+      <td class="mono" title="${esc(user)}">${esc(user)}</td>
+      <td class="cell-status" title="${esc(stLabel)}" aria-label="${esc(stLabel)}"><span class="dot ${cls}"></span></td>
+      <td title="${esc(osName)}">${esc(osName)}</td>
+      <td class="hint" title="${esc(specs)}">${esc(specs)}</td>
+      <td class="actions" onclick="event.stopPropagation()">
+        <button class="ghost" onclick="testServer(${s.id})">测试</button>
+        <button class="ghost" onclick="editServer(${s.id})">编辑</button>
+        <button class="ghost" onclick="cleanupServer(${s.id})" title="停止并删除该机上的本面板节点服务与配置">清理残余</button>
+        <button class="ghost danger" onclick="delServer(${s.id})">删除</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderProtos() {
+  $('protos').innerHTML = protos.map(x => {
+    const cls = x.status === 'ready' ? 'ready' : (x.status === 'experimental' ? 'experimental' : 'pending');
+    const txt = x.status === 'ready' ? '可部署' : (x.status === 'experimental' ? '实验' : '未接入');
+    const click = x.status === 'ready' ? 'click' : 'off';
+    return `<div class="proto ${click}" onclick="${x.status === 'ready' ? `openDeploy('${x.key}')` : `toast('${esc(x.name)} 暂未接入，先做 xray 系协议')`}">
+      <div class="n">${esc(x.name)}<span class="tag ${cls}">${txt}</span></div>
+      <div class="m">${esc(x.core)} · ${esc(x.transport)}${x.needs_domain?' · 需域名':''}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ── 服务器表单 ─────────────────────────────── */
+function clearProbe(){ const m=$('probeMsg'); if(m){ m.textContent=''; } }
+function toggleAuth() {
+  const isKey = $('f_auth').value === 'key';
+  $('keyBox').style.display = isKey ? '' : 'none';
+  $('pwdBox').style.display = isKey ? 'none' : '';
+}
+function openForm() {
+  editingId = null; $('formTitle').textContent = '添加服务器';
+  ['f_name','f_host','f_pwd','f_key','f_provider','f_region','f_note'].forEach(id => $(id).value = '');
+  $('f_port').value = '22'; $('f_user').value = 'root'; $('f_auth').value = 'password';
+  toggleAuth(); clearProbe(); $('mask').classList.add('show');
+}
+function editServer(id) {
+  const s = servers.find(x => x.id === id); if (!s) return;
+  editingId = id; $('formTitle').textContent = '编辑服务器';
+  $('f_name').value = s.name; $('f_host').value = s.host;
+  $('f_port').value = s.ssh_port; $('f_user').value = s.ssh_user;
+  $('f_auth').value = s.auth_type || 'password';
+  $('f_pwd').value = ''; $('f_key').value = '';
+  $('f_provider').value = s.provider || ''; $('f_region').value = s.region || ''; $('f_note').value = s.note || '';
+  toggleAuth(); clearProbe(); $('mask').classList.add('show');
+}
+function closeForm(){ $('mask').classList.remove('show'); }
+
+async function probeForm() {
+  const msg = $('probeMsg'), btn = $('probeBtn');
+  const host = $('f_host').value.trim();
+  if (!host) { msg.style.color = 'var(--warn)'; msg.textContent = '请先填写地址 / IP'; return; }
+  if (!$('f_pwd').value && !$('f_key').value && !editingId) {
+    msg.style.color = 'var(--warn)'; msg.textContent = '请先填写密码或私钥'; return;
+  }
+  btn.disabled = true; msg.style.color = 'var(--dim)'; msg.textContent = '正在连接…';
+  try {
+    const d = await api('/probe', { method:'POST', body: JSON.stringify({
+      server_id: editingId || 0, host,
+      ssh_port: parseInt($('f_port').value || '22', 10),
+      ssh_user: $('f_user').value.trim(),
+      auth_type: $('f_auth').value,
+      password: $('f_pwd').value, private_key: $('f_key').value
+    })});
+    if (d.ok) { msg.style.color='var(--ok)'; msg.textContent = `连接成功 · ${d.info.os || '未知系统'} · ${d.info.cores || '?'} 核 · ${d.info.mem_total || ''}`; }
+    else { msg.style.color='var(--bad)'; msg.textContent = '失败：' + (d.error || '未知错误'); }
+  } catch (e) { msg.style.color='var(--bad)'; msg.textContent = e.message; }
+  btn.disabled = false;
+}
+
+async function saveServer() {
+  const payload = {
+    name: $('f_name').value.trim(), host: $('f_host').value.trim(),
+    ssh_port: parseInt($('f_port').value || '22', 10), ssh_user: $('f_user').value.trim(),
+    auth_type: $('f_auth').value, password: $('f_pwd').value, private_key: $('f_key').value,
+    provider: $('f_provider').value.trim(), region: $('f_region').value.trim(), note: $('f_note').value.trim()
+  };
+  $('saveBtn').disabled = true;
+  try {
+    if (editingId) await api('/servers/' + editingId, { method:'PUT', body: JSON.stringify(payload) });
+    else await api('/servers', { method:'POST', body: JSON.stringify(payload) });
+    closeForm(); toast(editingId ? '已保存' : '已添加', 'ok'); load();
+  } catch(e) { toast(e.message, 'bad'); }
+  $('saveBtn').disabled = false;
+}
+
+async function delServer(id) {
+  const s = servers.find(x => x.id === id);
+  if (!confirm(`确定删除「${s ? s.name : id}」？\n只会从面板移除，不会动服务器上的东西。`)) return;
+  try { await api('/servers/' + id, { method:'DELETE' }); toast('已删除', 'ok'); load(); }
+  catch(e) { toast(e.message, 'bad'); }
+}
+
+async function testServer(id) {
+  toast('正在连接…');
+  try {
+    const d = await api('/servers/' + id + '/test', { method:'POST' });
+    if (d.ok) {
+      const os = (d.info && d.info.os) || '';
+      const spec = (d.info && d.info.specs) || '';
+      toast(`连接成功：${os}　${spec}`, 'ok');
+      if (d.warning) toast(d.warning, '');
+    } else {
+      toast('连接失败（已标为离线）：' + (d.error || '未知错误'), 'bad');
+    }
+    load();
+  } catch(e) { toast(e.message, 'bad'); }
+}
+
+/* ── 部署流程 ───────────────────────────────── */
+function openDeploy(key) {
+  depProto = protos.find(p => p.key === key); if (!depProto) return;
+  $('depTitle').textContent = '部署 ' + depProto.name;
+  $('depResults').style.display = 'none'; $('depResults').innerHTML = '';
+  $('depSetup').style.display = ''; $('depBtn').disabled = false; $('depMsg').textContent = '';
+  $('depCancel').textContent = '取消';
+
+  if (!servers.length) { toast('先添加一台服务器', 'bad'); return; }
+
+  $('depServers').innerHTML = servers.map(s => `
+    <label>
+      <input type="checkbox" value="${s.id}" ${s.status === 'online' ? 'checked' : ''} />
+      <span style="flex:1"><b>${esc(s.name)}</b> <span class="st mono">${esc(s.host)}:${s.ssh_port}</span></span>
+      <span class="st">${s.status === 'online' ? '在线' : (s.status === 'offline' ? '离线' : '未检测')}</span>
+    </label>`).join('');
+
+  $('d_port').value = 443;
+  $('d_netBox').style.display = key === 'vless' ? '' : 'none';
+  $('d_realityBox').style.display = key === 'vless' ? '' : 'none';
+  $('d_ssBox').style.display = key === 'shadowsocks' ? '' : 'none';
+  $('d_net').value = 'tcp'; $('d_dest').value = 'www.microsoft.com:443'; $('d_sni').value = '';
+
+  const tips = {
+    vless: 'Reality 模式不需要域名和证书，直接用伪装目标网站的 TLS 指纹，抗封锁最好。',
+    vmess: 'VMess + WebSocket，客户端需填路径（部署完成后链接里已包含）。',
+    shadowsocks: '轻量、兼容性广，但没有伪装，流量特征较明显。',
+    socks: '标准 SOCKS5，带账号密码，适合做跳板。',
+    http: '标准 HTTP 代理，带账号密码。'
+  };
+  $('d_tip').textContent = tips[key] || '';
+  $('depMask').classList.add('show');
+}
+
+function closeDeploy() {
+  $('depMask').classList.remove('show');
+  if ($('depResults').style.display !== 'none') load();
+}
+
+async function runDeploy() {
+  const ids = Array.from(document.querySelectorAll('#depServers input:checked')).map(i => parseInt(i.value, 10));
+  if (!ids.length) { toast('请至少勾选一台服务器', 'bad'); return; }
+  const port = parseInt($('d_port').value, 10);
+  if (!(port > 0 && port < 65536)) { toast('端口不合法', 'bad'); return; }
+
+  $('depBtn').disabled = true; $('depCancel').disabled = true;
+  $('depSetup').style.display = 'none';
+  const box = $('depResults'); box.style.display = 'grid';
+  box.innerHTML = '<div class="hint" id="depRunning">正在部署，首次会先上传内核（约 14MB），请稍候…</div>';
+
+  const payload = {
+    server_ids: ids, protocol: depProto.key, port,
+    tag: '', network: $('d_net').value, dest: $('d_dest').value.trim(), sni: $('d_sni').value.trim(),
+    method: $('d_method').value
+  };
+
+  try {
+    const d = await api('/deploy', { method:'POST', body: JSON.stringify(payload) });
+    const r = $('depRunning'); if (r) r.remove();
+    box.innerHTML = (d.results || []).map(o => `
+      <div class="res">
+        <div class="h">
+          <b>${esc(o.server_name)}</b>
+          <span style="color:${o.ok ? 'var(--ok)' : 'var(--bad)'}">${o.ok ? '部署成功' : '失败'}</span>
+        </div>
+        ${o.ok ? `
+          <div class="hint">节点链接（点击复制）：</div>
+          <div class="link" onclick="copyText(this)">${esc(o.link)}</div>
+        ` : `<div class="hint" style="color:var(--bad)">${esc(o.error)}</div>`}
+        <details><summary class="hint">查看日志（${(o.logs||[]).length} 行）</summary>
+          <div class="logs">${esc((o.logs || []).join('\n'))}</div>
+        </details>
+      </div>`).join('');
+    $('depMsg').textContent = '完成，可点「关闭」查看节点';
+    $('depCancel').textContent = '关闭';
+    toast('部署流程结束，检查结果', 'ok');
+  } catch(e) {
+    const r = $('depRunning'); if (r) r.remove();
+    box.innerHTML = `<div class="res"><div class="hint" style="color:var(--bad)">${esc(e.message)}</div></div>`;
+    $('depBtn').disabled = false;
+  }
+  $('depCancel').disabled = false;
+}
+
+function copyText(el) {
+  const t = el.textContent;
+  navigator.clipboard?.writeText(t).then(() => toast('已复制到剪贴板', 'ok')).catch(() => {
+    const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove(); toast('已复制', 'ok');
+  });
+}
+
+/* ── 服务器详情 ─────────────────────────────── */
+const NODE_LINKS = {};
+
+function copyNode(id) {
+  const t = NODE_LINKS[id] || '';
+  if (!t) { toast('该节点没有可用链接（可能部署失败）', 'bad'); return; }
+  navigator.clipboard?.writeText(t)
+    .then(() => toast('节点链接已复制，可直接粘贴到 v2rayN', 'ok'))
+    .catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = t; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove();
+      toast('已复制', 'ok');
+    });
+}
+
+async function testNode(id, btn) {
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = '测试中…';
+  try {
+    const r = await api('/deployments/' + id + '/test', { method: 'POST' });
+    if (r.ok) {
+      toast(`面板测试通过：${r.latency_ms} ms　出口 IP ${r.exit_ip || '未取到'}`, 'ok');
+    } else {
+      toast('面板测试失败：' + (r.error || '未知错误'), 'bad');
+    }
+  } catch (e) {
+    toast('面板测试失败：' + e.message, 'bad');
+  }
+  btn.disabled = false; btn.textContent = old;
+}
+
+async function cleanupServer(id) {
+  const s = servers.find(x => x.id === id);
+  if (!confirm(`确定清理「${s ? s.name : id}」上的本面板节点吗？\n\n会：停止并删除 vpspanel-* 服务、删除 config-*.json 配置与 WireGuard 接口，\n并删除面板侧节点记录。\n不会动系统其它组件（sshd/nginx 等）。`)) return;
+  toast('正在清理…');
+  try {
+    const r = await api('/servers/' + id + '/cleanup', { method: 'POST' });
+    if (r.ok) {
+      toast(`清理完成：${(r.logs || []).join('；')}`, 'ok');
+      load();
+    } else {
+      toast('清理失败：' + (r.error || '未知错误'), 'bad');
+    }
+  } catch (e) { toast('清理失败：' + e.message, 'bad'); }
+}
+
+async function openDetail(id) {
+  const s = servers.find(x => x.id === id); if (!s) return;
+  $('detTitle').textContent = s.name + ' · ' + s.host;
+  const one = v => String(v ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const specTxt = one(s.specs) || (s.cpu_cores ? `${s.cpu_cores} 核 / ${s.mem_mb || 0} MB` : '规格未知');
+  $('detMeta').textContent = `${one(s.os || s.os_info) || '系统未知'} · ${specTxt} · SSH ${one(s.username || s.ssh_user)}@${s.port || s.ssh_port}`;
+  $('detNodes').innerHTML = '<div class="hint">加载中…</div>';
+  $('detMask').classList.add('show');
+  try {
+    const d = await api('/servers/' + id + '/nodes');
+    const items = d.items || [];
+    if (!items.length) {
+      $('detNodes').innerHTML = '<div class="empty">这台服务器还没有节点<br><span class="hint">关闭后点上方协议卡片即可部署</span></div>';
+      return;
+    }
+    items.forEach(n => { NODE_LINKS[n.id] = n.link || ''; });
+    $('detNodes').innerHTML = items.map(n => `
+      <div class="node">
+        <div class="top">
+          <b>${esc(({chain:'链路中转',residential:'家宽落地',vless:'VLESS',vmess:'VMess',shadowsocks:'SS',socks:'SOCKS5',http:'HTTP'})[n.protocol] || n.protocol)}</b>
+          <span class="hint mono">:${n.port}</span>
+          <span class="tag ${n.status === 'success' ? 'ready' : 'pending'}">${n.status === 'success' ? '运行中' : n.status}</span>
+          <span class="spacer" style="flex:1"></span>
+          <span class="hint">${esc(n.created_at)}</span>
+          <button class="ghost" onclick="copyNode(${n.id})">复制链接</button>
+          <button class="ghost" onclick="testNode(${n.id}, this)">面板测试</button>
+          <button class="ghost danger" onclick="removeNode(${n.id})">卸载</button>
+        </div>
+        ${n.link ? `<div class="link" onclick="copyText(this)">${esc(n.link)}</div>` : '<div class="hint">（无链接：部署失败记录）</div>'}
+      </div>`).join('');
+  } catch(e) { $('detNodes').innerHTML = `<div class="hint" style="color:var(--bad)">${esc(e.message)}</div>`; }
+}
+function closeDetail(){ $('detMask').classList.remove('show'); load(); }
+
+async function removeNode(id) {
+  if (!confirm('确定卸载这个节点？会停止服务并删除远端配置。')) return;
+  try { await api('/deployments/' + id, { method:'DELETE' }); toast('已卸载', 'ok'); closeDetail(); }
+  catch(e) { toast(e.message, 'bad'); }
+}
+
+/* ── 运维工具：远端内核升级 / 链路 / 落地节点 ─────────── */
+function pickHTML() {
+  return servers.map(s => `
+  <label><input type="checkbox" value="${s.id}" />
+    <span style="flex:1"><b>${esc(s.name)}</b> <span class="st mono">${esc(s.host)}:${s.ssh_port}</span></span>
+    <span class="st">${s.status === 'online' ? '在线' : (s.status === 'offline' ? '离线' : '未检测')}</span>
+  </label>`).join('');
+}
+function pickIds(el) {
+  return Array.from(document.querySelectorAll('#' + el + ' input:checked')).map(i => parseInt(i.value, 10));
+}
+
+/* ── 远端内核升级（1B）── */
+async function openKernel() {
+  $('kerResults').style.display = 'none'; $('kerResults').innerHTML = '';
+  $('kerSetup').style.display = ''; $('kerBtn').disabled = true; $('kerMsg').textContent = '读取远端版本…';
+  $('kerRows').innerHTML = '<div class="hint">正在逐个读取版本，请稍候…</div>';
+  $('kerMask').classList.add('show');
+  try {
+    const d = await api('/kernels');
+    const b = d.builtin || {};
+    $('kerBuiltin').textContent = `面板内嵌：xray ${b.xray || '-'} / sing-box ${b.singbox || '-'} (${b.arch || ''})`;
+    $('kerBuiltinTag').textContent = `内嵌 xray ${b.xray || '-'}`;
+    const rows = d.items || [];
+    if (!rows.length) { $('kerRows').innerHTML = '<div class="hint">还没有服务器</div>'; $('kerMsg').textContent=''; return; }
+    $('kerRows').innerHTML = `<table><thead><tr>
+        <th style="width:40px"></th><th>服务器</th><th>xray</th><th>sing-box</th><th style="width:80px">状态</th>
+      </tr></thead><tbody>` + rows.map(r => {
+      const diff = r.xray_diff || r.singbox_diff;
+      return `<tr>
+        <td><input type="checkbox" value="${r.server_id}" ${diff ? 'checked' : ''} /></td>
+        <td><b>${esc(r.server_name)}</b><div class="hint mono">${esc(r.host)}</div></td>
+        <td class="mono">${esc(r.xray || '-')}${r.xray_diff ? ' <span class="tag pending">需更新</span>' : ''}</td>
+        <td class="mono">${esc(r.singbox || '-')}${r.singbox_diff ? ' <span class="tag pending">需更新</span>' : ''}</td>
+        <td>${r.error ? '<span style="color:var(--bad)">'+esc(r.error)+'</span>' : '<span style="color:var(--ok)">正常</span>'}</td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
+    $('kerBtn').disabled = false; $('kerMsg').textContent = '';
+  } catch (e) {
+    $('kerRows').innerHTML = `<div class="hint" style="color:var(--bad)">${esc(e.message)}</div>`;
+    $('kerMsg').textContent = '';
+  }
+}
+function closeKernel() { $('kerMask').classList.remove('show'); load(); }
+
+async function runKernel() {
+  const table = $('kerRows').querySelector('table');
+  const ids = table ? Array.from(table.querySelectorAll('tbody input:checked')).map(i => parseInt(i.value, 10)) : [];
+  if (!ids.length) { toast('请至少勾选一台服务器', 'bad'); return; }
+  $('kerBtn').disabled = true; $('kerMsg').textContent = '推送中…';
+  const box = $('kerResults'); box.style.display = 'grid';
+  box.innerHTML = '<div class="hint">推送内嵌内核 → 校验 → 重启服务…</div>';
+  try {
+    const d = await api('/kernels/update', { method: 'POST', body: JSON.stringify({ server_ids: ids, target: $('kerTarget').value }) });
+    box.innerHTML = (d.results || []).map(o => `
+      <div class="res">
+        <div class="h"><b>${esc(o.server_name)}</b>
+          <span style="color:${o.ok ? 'var(--ok)' : 'var(--bad)'}">${o.ok ? '成功' : '失败'}</span></div>
+        ${o.xray_new ? `<div class="hint">xray：${esc(o.xray_old || '未安装')} → <b>${esc(o.xray_new)}</b></div>` : ''}
+        ${o.sbox_new ? `<div class="hint">sing-box：${esc(o.sbox_old || '未安装')} → <b>${esc(o.sbox_new)}</b></div>` : ''}
+        ${o.restarted ? `<div class="hint">已重启 ${o.restarted} 个节点服务</div>` : ''}
+        ${o.error ? `<div class="hint" style="color:var(--bad)">${esc(o.error)}</div>` : ''}
+        <details><summary class="hint">日志（${(o.logs || []).length} 行）</summary>
+          <div class="logs">${esc((o.logs || []).join('\n'))}</div></details>
+      </div>`).join('');
+    $('kerMsg').textContent = '完成';
+    toast('内核推送流程结束', 'ok');
+  } catch (e) {
+    box.innerHTML = `<div class="hint" style="color:var(--bad)">${esc(e.message)}</div>`;
+    $('kerBtn').disabled = false;
+  }
+}
+
+/* ── 落地节点（家宽 SOCKS5）── */
+function openLanding() { $('landMask').classList.add('show'); loadLanding(); }
+function closeLanding() { $('landMask').classList.remove('show'); }
+
+async function loadLanding() {
+  const box = $('landList');
+  box.innerHTML = '<div class="hint">加载中…</div>';
+  try {
+    const d = await api('/landing-nodes');
+    const items = d.items || [];
+    if (!items.length) { box.innerHTML = '<div class="empty">还没有家宽节点</div>'; return; }
+    box.innerHTML = items.map(n => `
+      <div class="node">
+        <div class="top">
+          <b>${esc(n.name)}</b>
+          <span class="hint mono">${esc(n.host)}:${n.port}</span>
+          <span class="tag ${n.status === 'ok' ? 'ready' : 'pending'}">${n.status === 'ok' ? '可用' : (n.status === 'fail' ? '不可用' : '未测试')}</span>
+          ${n.expect_exit_ip ? `<span class="hint">预期 ${esc(n.expect_exit_ip)}</span>` : ''}
+          <span style="flex:1"></span>
+          <button class="ghost" onclick="testLanding(${n.id})">测试</button>
+          <button class="ghost danger" onclick="delLanding(${n.id})">删除</button>
+        </div>
+        ${n.last_error ? `<div class="hint" style="color:var(--bad)">${esc(n.last_error)}</div>` : ''}
+      </div>`).join('');
+  } catch (e) { box.innerHTML = `<div class="hint" style="color:var(--bad)">${esc(e.message)}</div>`; }
+}
+
+async function saveLanding() {
+  const payload = {
+    name: $('l_name').value.trim(), host: $('l_host').value.trim(),
+    port: parseInt($('l_port').value || '1080', 10),
+    username: $('l_user').value, password: $('l_pass').value,
+    expect_exit_ip: $('l_expect').value.trim()
+  };
+  if (!payload.name || !payload.host) { toast('名称和地址必填', 'bad'); return; }
+  try {
+    await api('/landing-nodes', { method: 'POST', body: JSON.stringify(payload) });
+    $('l_name').value = ''; $('l_host').value = ''; $('l_user').value = ''; $('l_pass').value = ''; $('l_expect').value = '';
+    toast('已保存，请点「测试」验证', 'ok'); loadLanding();
+  } catch (e) { toast(e.message, 'bad'); }
+}
+
+async function testLanding(id) {
+  $('landMsg').textContent = '测试中（TCP→握手→认证→出口 IP）…';
+  try {
+    const d = await api('/landing-nodes/' + id + '/test', { method: 'POST' });
+    const r = d.result || {};
+    const parts = [r.reachable ? 'TCP✓' : 'TCP✗', r.handshake ? '握手✓' : '握手✗'];
+    if (r.need_auth) parts.push(r.auth_ok ? '认证✓' : '认证✗');
+    parts.push(r.connect_ok ? '转发✓' : '转发✗');
+    if (r.exit_ip) parts.push('出口 ' + r.exit_ip);
+    $('landMsg').style.color = d.ok ? 'var(--ok)' : 'var(--bad)';
+    $('landMsg').textContent = parts.join(' · ') + (d.ok ? '' : '　原因：' + (r.error || d.node.last_error || ''));
+    toast(d.ok ? '节点可用' : '节点不可用', d.ok ? 'ok' : 'bad');
+    loadLanding();
+  } catch (e) { $('landMsg').style.color = 'var(--bad)'; $('landMsg').textContent = e.message; }
+}
+
+async function delLanding(id) {
+  if (!confirm('删除这个落地节点？只删记录，不动任何服务器。')) return;
+  try { await api('/landing-nodes/' + id, { method: 'DELETE' }); toast('已删除', 'ok'); loadLanding(); }
+  catch (e) { toast(e.message, 'bad'); }
+}
+
+/* ── 前置 + 落地 ── */
+async function openChain() {
+  if (servers.length < 1) { toast('先添加一台前置服务器', 'bad'); return; }
+  $('chainResults').style.display = 'none'; $('chainResults').innerHTML = '';
+  $('chainSetup').style.display = ''; $('chainBtn').disabled = false; $('chainMsg').textContent = '';
+  $('c_relay').innerHTML = servers.map(s => `<option value="${s.id}">${esc(s.name)} · ${esc(s.host)}</option>`).join('');
+  $('c_landing').innerHTML = '<option>加载中…</option>';
+  $('chainMask').classList.add('show');
+  try {
+    const d = await api('/landing-options');
+    const items = d.items || [];
+    const srv = items.filter(x => x.kind === 'server' && String(x.id) !== $('c_relay').value);
+    const hom = items.filter(x => x.kind === 'home_socks5');
+    let html = '';
+    if (srv.length) html += '<optgroup label="普通 VPS">' + srv.map(x =>
+      `<option value="server:${x.id}">${esc(x.name)} · ${esc(x.detail)}</option>`).join('') + '</optgroup>';
+    if (hom.length) html += '<optgroup label="家宽 SOCKS5">' + hom.map(x =>
+      `<option value="home_socks5:${x.id}">${esc(x.name)} · ${esc(x.detail)}${x.status === 'ok' ? '' : '（未通过测试）'}</option>`).join('') + '</optgroup>';
+    $('c_landing').innerHTML = html || '<option value="">没有可选落地</option>';
+    syncLandingFields();
+  } catch (e) { $('c_landing').innerHTML = `<option value="">${esc(e.message)}</option>`; }
+}
+function closeChain() { $('chainMask').classList.remove('show'); load(); }
+
+function syncLandingFields() {
+  const v = $('c_landing').value || '';
+  const isServer = v.startsWith('server:');
+  $('c_serverOnly').style.display = isServer ? '' : 'none';
+}
+
+async function runChain() {
+  const relay = parseInt($('c_relay').value, 10);
+  const lv = $('c_landing').value || '';
+  if (!relay || !lv) { toast('请选择前置和落地', 'bad'); return; }
+  const [kind, idStr] = lv.split(':');
+  const landingId = parseInt(idStr, 10);
+  $('chainBtn').disabled = true; $('chainMsg').textContent = '部署中…';
+  const box = $('chainResults'); box.style.display = 'grid';
+  box.innerHTML = '<div class="hint">落地 → 前置 → 可达性 → 出口 IP 校验…</div>';
+  try {
+    const d = await api('/chain/deploy', { method: 'POST', body: JSON.stringify({
+      relay_id: relay, landing_kind: kind, landing_id: landingId,
+      relay_port: parseInt($('c_rport').value || '443', 10),
+      landing_port: parseInt($('c_lport').value || '8443', 10),
+      link_proto: $('c_proto').value,
+      dest: $('c_dest').value.trim(), sni: $('c_sni').value.trim()
+    })});
+    box.innerHTML = `
+      <div class="res">
+        <div class="h"><b>${d.ok ? '链路已建立' : '部署失败'}</b>
+          <span style="color:${d.ok ? 'var(--ok)' : 'var(--bad)'}">${d.ok ? '成功' : '已回滚'}</span></div>
+        ${d.ok ? `<div class="hint">客户端链接（点击复制）：</div>
+          <div class="link" onclick="copyText(this)">${esc(d.link)}</div>
+          <div class="hint">前置：${esc(d.meta.relay)}　落地：${esc(d.meta.landing)}（${esc(d.meta.landing_kind)}）　出口 IP：${esc(d.exit_ip || '-')}</div>`
+          : `<div class="hint" style="color:var(--bad)">${esc(d.error)}</div>`}
+        <details><summary class="hint">日志（${(d.logs || []).length} 行）</summary>
+          <div class="logs">${esc((d.logs || []).join('\n'))}</div></details>
+      </div>`;
+    $('chainMsg').textContent = d.ok ? '完成' : '失败';
+    toast(d.ok ? '链路部署成功' : '链路部署失败', d.ok ? 'ok' : 'bad');
+  } catch (e) {
+    box.innerHTML = `<div class="hint" style="color:var(--bad)">${esc(e.message)}</div>`;
+    $('chainBtn').disabled = false;
+  }
+}
+
+document.getElementById('c_landing')?.addEventListener('change', syncLandingFields);
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeForm(); closeDeploy(); closeDetail(); closeKernel(); closeChain(); closeLanding(); }
+});
+
+load();
+</script>
+</body>
+</html>

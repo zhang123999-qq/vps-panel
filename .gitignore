@@ -1,0 +1,29 @@
+# ── 构建产物 ──
+dist/*.zip
+dist/pkg/
+dist/VpsPanel.exe
+dist/vps-panel-linux
+dist/vps-panel
+
+# ── 运行时数据（含密钥，绝不能入库）──
+data/
+master.key
+known_hosts.json
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# ── 本地产物 / 临时 ──
+media/
+tool_results/
+*.png
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+
+# ── 编辑器 ──
+.idea/
+.vscode/
+*.swp
